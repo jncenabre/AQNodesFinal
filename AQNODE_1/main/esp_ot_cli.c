@@ -98,33 +98,29 @@ double R0_no2 = 13598; // CHANGE THIS FOR EVERY NODE!!!
 
 //ULPSM-SO2
 #define ADC_CHANNEL_VGAS   ADC_CHANNEL_3 // GPIO4 (ADC1_CH3)
-#define ADC_CHANNEL_VREF   ADC_CHANNEL_2 // GPIO3 (ADC1_CH2)
+#define ADC_CHANNEL_VREF   ADC_CHANNEL_4 // GPIO5 (ADC1_CH4)
 #define SENSOR_MAX_OUTPUT  3000.0 // Maximum output voltage in mV (3.0V)
 #define SENSOR_MAX_PPM     20.0   // Maximum measurable SO2 concentration in ppm
-// Sampling parameters
-#define SAMPLES_PER_INTERVAL 60  // total readings per minute
-#define OVERSAMPLE_COUNT     64  // ADC reads per sample
-#define WINDOW_SIZE          60  // moving-average window size
 float so2_ppm;
-float sensitivity = 46.11; // CHANGE THIS FOR EVERY NODE!!!
+float sensitivity = 40.49; // CHANGE THIS FOR EVERY NODE!!!
 float gain = 100; // CHANGE THIS FOR EVERY NODE!!!
-float offset = 0; // CHANGE THIS FOR EVERY NODE!!!
+float offset = 337; // CHANGE THIS FOR EVERY NODE!!!
 
 // LONGITUDE AND LATITUDE CONSTANTS (Comment when not in use)
 
-//float longi=121.068661, lat=14.652522; // AQ1
+float longi=121.068661, lat=14.652522; // AQ1
 //float longi=121.068525, lat=14.652522; // AQ2
 //float longi=121.068514, lat=14.652406; // AQ3
-float longi=121.068667, lat=14.6524; // AQ4
+//float longi=121.068667, lat=14.6524; // AQ4
 
-//static const char *TAG = "AQ NODE 1";
+static const char *TAG = "AQ NODE 1";
 //static const char *TAG = "AQ NODE 2";
 //static const char *TAG = "AQ NODE 3";
-static const char *TAG = "AQ NODE 4";
+//static const char *TAG = "AQ NODE 4";
 
 static led_strip_handle_t led_strip;
 char payloadd[500];  // Global pointer
-float pm10=0.0,pm25=0.0,co2=0.0,no2=0.0,co=0.0, so2=0.0, so2old=0;
+float pm10=0.0,pm25=0.0,co2=0.0,no2=0.0,co=0.0, so2=0.0;
 int connected=0;
 int time_established=0;
 int data_ready=0;
@@ -516,7 +512,7 @@ static void send_coap_post_request(otInstance *instance)
     otMessageInfo messageInfo;
     memset(&messageInfo, 0, sizeof(messageInfo));
     otIp6Address destAddress;
-    error = otIp6AddressFromString("fdde:ad00:beef:0:c943:8315:7641:75a9", &destAddress);
+    error = otIp6AddressFromString("2001:0db8:85a3::1", &destAddress);
     if (error != OT_ERROR_NONE)
     {
          ESP_LOGE(TAG, "Failed to parse server IPv6 address: %s", otThreadErrorToString(error));
@@ -640,7 +636,7 @@ static void coap_client_task(void *arg)
     //send_datetime_get_request(instance);
     set_datetime_manual(instance);
     vTaskDelay(pdMS_TO_TICKS(5000));
-    vTaskDelay(pdMS_TO_TICKS(115000));
+    vTaskDelay(pdMS_TO_TICKS(2000));
     while (true)
     {
          // First, check if the server is reachable
@@ -648,7 +644,7 @@ static void coap_client_task(void *arg)
          {
               //ESP_LOGI(TAG, "Server is reachable. Proceeding with POST request.");
               send_coap_post_request(instance);
-              vTaskDelay(pdMS_TO_TICKS(59000)); // sampling time
+              vTaskDelay(pdMS_TO_TICKS(60000));
          }
          else
          {
@@ -858,8 +854,8 @@ void read_measured_values_sen55() {
 		//ESP_LOGI(TAG, "PM2.5 CRC Correct!");
 
 	}
-    //pm25 = pm25_raw / 10.0; // Scale factor is 10
-    //pm25 = 1.9467002394827233*pm25 + (2.5926092705655464);
+    pm25 = pm25_raw / 10.0; // Scale factor is 10
+    pm25 = 1.9467002394827233*pm25 + (2.5926092705655464);
 
     // Parse PM10 value (bytes 9, 10) and its CRC (byte 11)
     uint16_t pm10_raw = data[9] << 8; 
@@ -873,8 +869,8 @@ void read_measured_values_sen55() {
 		//ESP_LOGI(TAG, "PM10 CRC Correct!");
 
 	}
-    //pm10 = pm10_raw / 10.0; // Scale factor is 10
-    //pm10 = 2.3350992860750863*pm10 + (1.1038457405169595);
+    pm10 = pm10_raw / 10.0; // Scale factor is 10
+    pm10 = 2.3350992860750863*pm10 + (1.1038457405169595);
 
     // Log the parsed values
     //ESP_LOGI(TAG, "PM2.5: %.1f ", pm25);
@@ -945,7 +941,7 @@ void scd41_read_measurement() {
         (uint8_t)(SCD41_READ_MEASUREMENT_CMD & 0xFF)
     };
 
-    uint8_t data[8] = {0}; // Buffer to hold raw sensor data
+    uint8_t data[6] = {0}; // Buffer to hold raw sensor data
 
     // Send the command to read measurement data
     i2c_cmd_handle_t cmd_handle = i2c_cmd_link_create();
@@ -974,15 +970,15 @@ void scd41_read_measurement() {
 
     if (ret == ESP_OK) {
         uint16_t co2_raw = (data[0] << 8) | data[1]; // Raw CO2 value
-        uint16_t temperature_raw = (data[3] << 8) | data[4]; // Raw temperature value
-        uint16_t humidity_raw = (data[6] << 8) | data[7]; // Raw humidity value
+        uint16_t temperature_raw = (data[2] << 8) | data[3]; // Raw temperature value
+        uint16_t humidity_raw = (data[4] << 8) | data[5]; // Raw humidity value
 
         // Convert raw values to meaningful units
-        co2 = co2_raw; // CO2 is directly in ppm
+        co2 = co2_raw+100; // CO2 is directly in ppm
         float temperature_celsius = -45.0 + (175.0 * ((float)temperature_raw / 65536.0)); //From datasheet
         float humidity_percent = 100.0 * ((float)humidity_raw / 65536.0); //From datasheet
 
-		//ESP_LOGI(TAG, "CO2: %.0f ppm, Temperature: %.2fC, Humidity: %.2f%%", co2, temperature_celsius, humidity_percent);
+		ESP_LOGI(TAG, "CO2: %.0f ppm, Temperature: %.2hu, Humidity: %.2f%%", co2, co2_raw, humidity_percent);
     } 
     else {
         ESP_LOGE(TAG, "[SCD41] Failed to read! %s", esp_err_to_name(ret));
@@ -1152,17 +1148,12 @@ static void init_adc1(void) {
 
 void mics_task(void *vParameters){
 	init_adc1();
-	vTaskDelay(pdMS_TO_TICKS(9500));
+	vTaskDelay(pdMS_TO_TICKS(9000));
 	
 	while (1) {
 		
         float voltage_red = read_adc_voltage(ADC1_CH1_RED);
         float voltage_nox = read_adc_voltage(ADC1_CH2_NOX);
-        
-        //FOR CALIBRATION ONLY!!!!!!
-		//co = voltage_red;
-		//no2 = voltage_nox;
-        
         voltage_red=voltage_red / 1000.0;
         voltage_nox=voltage_nox / 1000.0;
         
@@ -1174,95 +1165,42 @@ void mics_task(void *vParameters){
 		co = pow(10, -1.1859 * (log(Rs_co/R0_co) / M_LN10) + 0.6201); //Curve Fitting Equation from Source
 		//For NO2 readings	
 		no2 = pow(10, 0.9682 * (log(Rs_no2/R0_no2) / M_LN10) - 0.8108); //Curve Fitting Equation from Source
-		
-		
+
 
         //ESP_LOGI(TAG, "Processed Results -> CO: %.2f ppm, NO2: %.2f ppm",voltage_red / 1000.0, voltage_nox / 1000.0);
 
-        vTaskDelay(pdMS_TO_TICKS(1000));  // Delay 1s
+        vTaskDelay(pdMS_TO_TICKS(5000));  // Delay 1s
     }
 
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 static float read_so2_concentration(void) {
-	float sum_gas = 0.0f, sum_ref = 0.0f;
-
-    // 60 samples, one per second
-    
-    	// --- OVERSAMPLING BLOCK ---
-        uint32_t raw_acc_gas = 0;
-        uint32_t raw_acc_ref = 0;
-
-        for (int j = 0; j < OVERSAMPLE_COUNT; j++) {
-			int raw_vgas = 0, raw_vref = 0;
-            ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, ADC_CHANNEL_VGAS, &raw_vgas));
-            ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, ADC_CHANNEL_VREF, &raw_vref));
-
-            raw_acc_gas += (uint32_t)raw_vgas;
-            raw_acc_ref += (uint32_t)raw_vref;
-        }
-
-        // average raw codes
-        uint32_t raw_avg_gas = raw_acc_gas / OVERSAMPLE_COUNT;
-        uint32_t raw_avg_ref = raw_acc_ref / OVERSAMPLE_COUNT;
-
-        // convert averaged codes to millivolts
-        int cal_gas_mv = 0, cal_ref_mv = 0;
-        if (adc1_cali_handle) {
-            ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc1_cali_handle, raw_avg_gas, &cal_gas_mv));
-            ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc1_cali_handle, raw_avg_ref, &cal_ref_mv));
-        } else {
-            ESP_LOGW(TAG, "No ADC calibration, using raw codes as mV!");
-            cal_gas_mv = (int)raw_avg_gas;
-            cal_ref_mv = (int)raw_avg_ref;
-        }
-        float gas_voltage = (float)cal_gas_mv;
-        float ref_voltage = (float)cal_ref_mv;
-        float diff       = gas_voltage - ref_voltage;
-            
-      	//ESP_LOGI(TAG, "Raw Vgas=%" PRIu32 ", Raw Vref=%" PRIu32, raw_avg_gas, raw_avg_ref);
-		//ESP_LOGI(TAG, "Vgas=%7.2f mV, Vref=%7.2f mV, Diff=%7.2f mV", gas_voltage, ref_voltage, diff);
-          	
-        sum_gas += gas_voltage;
-        sum_ref += ref_voltage;
+    int raw_vgas = 0, raw_vref = 0;
+    int cal_vgas = 0, cal_vref = 0;
 	
-   	
+    // Read raw ADC value for Vgas
+    ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, ADC_CHANNEL_VGAS, &raw_vgas));
+
+    // Read raw ADC value for Vref
+    ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, ADC_CHANNEL_VREF, &raw_vref));
+
+    // Calibrate readings if calibration is available
+    if (adc1_cali_handle) {
+        ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc1_cali_handle, raw_vgas, &cal_vgas));
+        ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc1_cali_handle, raw_vref, &cal_vref));
+    } else {
+        ESP_LOGW(TAG, "ADC calibration not available, using raw values.");
+        cal_vgas = raw_vgas;
+        cal_vref = raw_vref;
+    }
+
+   
     float M = sensitivity * gain * 0.000000001 * 1000 * 1000;
-	so2 = (1.0 / M) * (cal_gas_mv - (cal_ref_mv + offset));
+	so2 = (1.0 / M) * (cal_vgas - (cal_vref + offset));
 	so2_ppm=so2;
-	
-	//FOR CALIBRATION ONLY!!!!!!!
-	pm25 = cal_gas_mv;
-	pm10 = cal_ref_mv;
-	//ESP_LOGI(TAG, "Vgas: %5d, Vref: %5d ", cal_gas_mv, cal_ref_mv);
-
-	
 
     return so2_ppm;
-}
-
-// Oversample and average raw ADC codes
-static uint32_t oversample_raw(adc_channel_t ch) {
-    uint32_t acc = 0;
-    for (int i = 0; i < OVERSAMPLE_COUNT; ++i) {
-        int raw;
-        ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, ch, &raw));
-        acc += (uint32_t)raw;
-    }
-   
-    return (acc + OVERSAMPLE_COUNT/2) / OVERSAMPLE_COUNT;
-}
-
-// Convert ADC code to millivolts
-static float code_to_mv(uint32_t code) {
-    int mv = 0;
-    if (adc1_cali_handle) {
-        ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc1_cali_handle, code, &mv));
-    } else {
-        mv = code;
-    }
-    return (float)mv;
 }
 
 static void init_adc(void) {
@@ -1304,56 +1242,13 @@ void ulpsm_task(void *vParameters){
 	init_adc();
 	vTaskDelay(pdMS_TO_TICKS(3000)); // Delay 2 second
 	
-	float window_gas[WINDOW_SIZE] = {0};
-    float window_ref[WINDOW_SIZE] = {0};
-    int idx = 0;
-    int count = 0;
+	while (1) {
+        so2 = read_so2_concentration();
+        //read_so2_concentration();
+        //ESP_LOGI(TAG, "SO2 Concentration: %.2f ppm", so2_ppm);
+        vTaskDelay(pdMS_TO_TICKS(5000)); // Delay 2 second
+    }
 
-    while (1) {
-        float sum_gas = 0.0f, sum_ref = 0.0f;
-        for (int i = 0; i < SAMPLES_PER_INTERVAL; ++i) {
-            // 1) Raw oversampling
-            uint32_t raw_gas = oversample_raw(ADC_CHANNEL_VGAS);
-            uint32_t raw_ref = oversample_raw(ADC_CHANNEL_VREF);
-            // 2) Convert to mV
-            float vgas = code_to_mv(raw_gas);
-            float vref = code_to_mv(raw_ref);
-            // 3) Update moving-average window
-            window_gas[idx] = vgas;
-            window_ref[idx] = vref;
-            idx = (idx + 1) % WINDOW_SIZE;
-            if (count < WINDOW_SIZE) ++count;
-            // 4) Compute moving-average
-            float ma_gas = 0, ma_ref = 0;
-            for (int j = 0; j < count; ++j) {
-                ma_gas += window_gas[j];
-                ma_ref += window_ref[j];
-            }
-            ma_gas /= count;
-            ma_ref /= count;
-
-            //ESP_LOGI(TAG, "Sample %2d: raw_gas=%" PRIu32 ", raw_ref=%" PRIu32, i+1, raw_gas, raw_ref);
-            ESP_LOGI(TAG, "  Vgas=%.2f mV, Vref=%.2f mV, MA(Vgas)=%.2f, MA(Vref)=%.2f",
-                     vgas, vref, ma_gas, ma_ref);
-            sum_gas += ma_gas;
-            sum_ref += ma_ref;
-            vTaskDelay(pdMS_TO_TICKS(1000));
-        }
-        // Compute 60-second averages
-        float avg_gas = sum_gas / SAMPLES_PER_INTERVAL;
-        float avg_ref = sum_ref / SAMPLES_PER_INTERVAL;
-        //ESP_LOGI(TAG, "=== Min avg: Vgas=%.2f mV, Vref=%.2f mV ===", avg_gas, avg_ref);
-        // ... compute ppm as before using avg_gas and avg_ref ...
-        
-        float M = sensitivity * gain * 0.000000001 * 1000 * 1000;
-		so2 = (1.0 / M) * (avg_gas - (avg_ref + offset));
-		so2_ppm=so2;
-		
-		//FOR CALIBRATION ONLY!!!!!!!
-		pm25 = avg_gas;
-		pm10 = avg_ref;
-		//ESP_LOGI(TAG, "Vgas: %5d, Vref: %5d ", cal_gas_mv, cal_ref_mv);
-	}
 }
 
 static uint8_t scd41_crc8(const uint8_t *data, uint8_t count) {
@@ -1494,18 +1389,12 @@ void display_task(void *vParameters){
 		        } else {
 		            ESP_LOGE(TAG, "Failed to read DS3231 time");
 		        }
-		        //Filter Stage to avoid zero values of Moving Average
-		        if(so2==0.0){
-					so2=so2old;
-				}
-				
-		        
 				//printf("\nCO2: %.1f, PM2.5: %.1f, PM10: %.1f, CO: %.1f, NO2: %.1f, SO2: %.1f \n", co2, pm25, pm10, co, no2, so2);
 				//snprintf(payloadd, sizeof(payloadd), "--FROM AQ1-- CO2: %.1f, PM2.5: %.1f, PM10: %.1f, CO: %.1f, NO2: %.1f, SO2: %.1f, MAC: %s, Time: %lld\n", co2, pm25, pm10, co, no2, so2, global_mac_str,(long long)now);
-				snprintf(payloadd, sizeof(payloadd), "{\"type\": \"data\", \"source\": \"%s\", \"local_time\": \"%s\", \"lat\": \"%.6f\", \"long\": \"%.6f\", \"SEN55_PM25\":\"%.5f\", \"SEN55_PM10\":\"%.5f\", \"SCD41_CO2\":\"%.1f\", \"MICS4514_CO\":\"%.5f\", \"MICS4514_NO2\":\"%.5f\", \"ULPSM_SO2\":\"%.1f\"}", TAG, g_synced_time_str, lat, longi, pm25, pm10, co2, co, no2, so2);
-				so2old=so2;
+				snprintf(payloadd, sizeof(payloadd), "{\"type\": \"data\", \"source\": \"%s\", \"local_time\": \"%s\", \"lat\": \"%.6f\", \"long\": \"%.6f\", \"SEN55_PM25\":\"%.1f\", \"SEN55_PM10\":\"%.1f\", \"SCD41_CO2\":\"%.1f\", \"MICS4514_CO\":\"%.5f\", \"MICS4514_NO2\":\"%.5f\", \"ULPSM_SO2\":\"%.1f\"}", TAG, g_synced_time_str, lat, longi, pm25, pm10, co2, co, no2, so2);
+
 	        }
-	        vTaskDelay(pdMS_TO_TICKS(30000)); // Poll every 60 seconds
+	        vTaskDelay(pdMS_TO_TICKS(60000)); // Poll every 60 seconds
 	    }
 	}
 
@@ -1563,7 +1452,7 @@ void app_main(void)
 	scd41_stop_periodic_measurement();
 	vTaskDelay(pdMS_TO_TICKS(1000));
 	// Set ASC to the desired state (change 'true' to enable or 'false' to disable)
-	scd41_set_asc(false);
+    scd41_set_asc(false);
     vTaskDelay(pdMS_TO_TICKS(1000));
     // Read and log the current ASC status
     bool asc_enabled = true;
@@ -1576,12 +1465,12 @@ void app_main(void)
 	
 	vTaskDelay(pdMS_TO_TICKS(2000));
 	
-	//xTaskCreate(sen55_task, "SEN55_Task", 4096, NULL, 4, NULL);
-	//xTaskCreate(scd41_task, "SCD41_Task", 4096, NULL, 3, NULL);
+	xTaskCreate(sen55_task, "SEN55_Task", 4096, NULL, 4, NULL);
+	xTaskCreate(scd41_task, "SCD41_Task", 4096, NULL, 3, NULL);
 	xTaskCreate(mics_task, "MICS_Task", 4096, NULL, 2, NULL);
 	xTaskCreate(ulpsm_task, "ULPSM_Task", 4096, NULL, 1, NULL);
 	
-	vTaskDelay(pdMS_TO_TICKS(25000));
+	vTaskDelay(pdMS_TO_TICKS(23000));
 	xTaskCreate(display_task, "Display_Task", 4096, NULL, 1, NULL);
 		
 
